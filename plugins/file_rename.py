@@ -326,16 +326,16 @@ async def process_rename(client: Client, message: Message):
         
 
         # Prepare for upload
-upload_msg = await download_msg.edit("**__Uploading...__**")
-c_caption = await codeflixbots.get_caption(message.chat.id)
+        upload_msg = await download_msg.edit("**__Uploading...__**")
+        c_caption = await codeflixbots.get_caption(message.chat.id)
 
-# Handle thumbnails
-c_thumb = None
-is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
+        # Handle thumbnails
+        c_thumb = None
+        is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
 
-if is_global_enabled:
-    c_thumb = await codeflixbots.get_global_thumb(user_id)
-    if not c_thumb:
+        if is_global_enabled:
+        c_thumb = await codeflixbots.get_global_thumb(user_id)
+        if not c_thumb:
         await upload_msg.edit("⚠️ Global Mode is ON but no global thumbnail set!")
 else:
     # Try quality-specific thumbnail first
