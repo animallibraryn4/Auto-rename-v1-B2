@@ -330,38 +330,42 @@ async def process_rename(client: Client, message: Message):
         c_caption = await codeflixbots.get_caption(message.chat.id)
 
         # Handle thumbnails
-        c_thumb = None
-        is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
-
-        if is_global_enabled:
-            c_thumb = await codeflixbots.get_global_thumb(user_id)
-            if not c_thumb:
-                await upload_msg.edit("⚠️ Global Mode is ON but no global thumbnail set!")
-        else:
-            standard_quality = standardize_quality_name(extract_quality(file_name)) if not is_pdf else None
-            if standard_quality and standard_quality != "Unknown":
-                c_thumb = await codeflixbots.get_quality_thumbnail(user_id, standard_quality)
-            if not c_thumb:
-                c_thumb = await codeflixbots.get_thumbnail(user_id)
-
-        if not c_thumb and media_type == "video" and message.video.thumbs:
-            c_thumb = message.video.thumbs[0].file_id
-
-        ph_path = None
         if c_thumb:
+    try:
+        ph_path = await client.download_media(c_thumb)
+        if ph_path and os.path.exists(ph_path):
             try:
-                ph_path = await client.download_media(c_thumb)
-                if ph_path and os.path.exists(ph_path):
-                    try:
-                        img = Image.open(ph_path).convert("RGB")
-                        img = img.resize((320, 320))
-                        img.save(ph_path, "JPEG")
-                    except Exception as e:
-                        await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
-                        ph_path = None
+                img = Image.open(ph_path)
+                # Convert to RGB if needed
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                # Calculate new dimensions while maintaining aspect ratio
+                width, height = img.size
+                if width > height:
+                    new_height = 320
+                    new_width = int((new_height / height) * width)
+                else:
+                    new_width = 320
+                    new_height = int((new_width / width) * height)
+                
+                # Resize and crop to exact 320x320 if needed
+                img = img.resize((new_width, new_height), Image.LANCZOS)
+                
+                # If we need exact 320x320, crop the center
+                if new_width != 320 or new_height != 320:
+                    left = (new_width - 320)/2
+                    top = (new_height - 320)/2
+                    right = (new_width + 320)/2
+                    bottom = (new_height + 320)/2
+                    img = img.crop((left, top, right, bottom))
+                
+                img.save(ph_path, "JPEG", quality=95)
             except Exception as e:
-                await upload_msg.edit(f"⚠️ Thumbnail Download Error: {e}")
+                await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
                 ph_path = None
+    except Exception as e:
+        await upload_msg.edit(f"⚠️ Thumbnail Download Error: {e}")
+        ph_path = None
 
         caption = (
             c_caption.format(
