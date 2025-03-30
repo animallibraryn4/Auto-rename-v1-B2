@@ -299,8 +299,7 @@ async def process_rename(client: Client, message: Message):
             '-i', path,
             '-metadata', f'title={await codeflixbots.get_title(user_id)}',
             '-metadata', f'artist={await codeflixbots.get_artist(user_id)}',
-            '-metadata', f'author={await codeflixbots.get_author(user_id)}',
-            '-metadata:s:v', f'title={await codeflixbots.get_video(user_id)}',
+            '-metadata', f'author={await codeflixbots.get_author(user_id)}',            '-metadata:s:v', f'title={await codeflixbots.get_video(user_id)}',
             '-metadata:s:a', f'title={await codeflixbots.get_audio(user_id)}',
             '-metadata:s:s', f'title={await codeflixbots.get_subtitle(user_id)}',
             '-map', '0',
@@ -325,15 +324,15 @@ async def process_rename(client: Client, message: Message):
             os.replace(final_output, metadata_file_path)
         path = metadata_file_path
         
-        # Prepare for upload
-        upload_msg = await download_msg.edit("**__Uploading...__**")
-        c_caption = await codeflixbots.get_caption(message.chat.id)
 
-        # Handle thumbnails
+        # Prepare for upload
+upload_msg = await download_msg.edit("**__Uploading...__**")
+c_caption = await codeflixbots.get_caption(message.chat.id)
+
+# Handle thumbnails
 c_thumb = None
 is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
 
-# Get appropriate thumbnail based on settings
 if is_global_enabled:
     c_thumb = await codeflixbots.get_global_thumb(user_id)
     if not c_thumb:
