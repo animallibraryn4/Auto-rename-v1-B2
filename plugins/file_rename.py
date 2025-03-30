@@ -4,7 +4,7 @@ import time
 import shutil
 import asyncio
 from datetime import datetime
-from PIL import Image, ImageOps
+from PIL import Image
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait
 from pyrogram.types import InputMediaDocument, Message
@@ -147,44 +147,6 @@ def extract_volume_chapter(filename):
     if match:
         return match.group(1), match.group(2)
     return None, None
-
-async def process_thumbnail(thumb_path):
-    """Process thumbnail to ensure proper size and format"""
-    try:
-        with Image.open(thumb_path) as img:
-            # Convert to RGB if needed
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Calculate dimensions while maintaining aspect ratio
-            width, height = img.size
-            target_size = (320, 320)
-            
-            # If image is not square, add padding
-            if width != height:
-                # Resize maintaining aspect ratio
-                ratio = min(target_size[0]/width, target_size[1]/height)
-                new_size = (int(width*ratio), int(height*ratio))
-                img = img.resize(new_size, Image.LANCZOS)
-                
-                # Create new image with white background
-                new_img = Image.new('RGB', target_size, (255, 255, 255))
-                # Paste the resized image centered
-                new_img.paste(img, (
-                    (target_size[0] - new_size[0]) // 2,
-                    (target_size[1] - new_size[1]) // 2
-                ))
-                img = new_img
-            else:
-                # Direct resize for square images
-                img = img.resize(target_size, Image.LANCZOS)
-            
-            # Save with quality optimization
-            img.save(thumb_path, "JPEG", quality=90, optimize=True, progressive=True)
-        return True
-    except Exception as e:
-        print(f"Thumbnail processing error: {e}")
-        return False
 
 async def process_rename(client: Client, message: Message):
     ph_path = None
@@ -367,108 +329,131 @@ async def process_rename(client: Client, message: Message):
         upload_msg = await download_msg.edit("**__Uploading...__**")
         c_caption = await codeflixbots.get_caption(message.chat.id)
 
-        # Enhanced Thumbnail Handling
+        # Handle thumbnails with improved processing
         c_thumb = None
         is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
 
-        # Thumbnail selection logic
         if is_global_enabled:
             c_thumb = await codeflixbots.get_global_thumb(user_id)
             if not c_thumb:
                 await upload_msg.edit("⚠️ Global Mode is ON but no global thumbnail set!")
         else:
-            # Try quality-specific thumbnail first
             standard_quality = standardize_quality_name(extract_quality(file_name)) if not is_pdf else None
             if standard_quality and standard_quality != "Unknown":
                 c_thumb = await codeflixbots.get_quality_thumbnail(user_id, standard_quality)
-            
-            # Fallback to default thumbnail
             if not c_thumb:
                 c_thumb = await codeflixbots.get_thumbnail(user_id)
 
-        # Final fallback to video thumbnail
         if not c_thumb and media_type == "video" and message.video.thumbs:
             c_thumb = message.video.thumbs[0].file_id
 
         ph_path = None
         if c_thumb:
             try:
-                # Download thumbnail
                 ph_path = await client.download_media(c_thumb)
                 if ph_path and os.path.exists(ph_path):
-                    # Process thumbnail with enhanced function
-                    if not await process_thumbnail(ph_path):
-                        await upload_msg.edit("⚠️ Failed to process thumbnail, using original")
+                    try:
+                        with Image.open(ph_path) as img:
+                            # Convert to RGB if needed
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+                            
+                            # Calculate dimensions while maintaining aspect ratio
+                            width, height = img.size
+                            target_size = (320, 320)
+                            
+                            # Resize with high-quality interpolation
+                            if width != height:
+                                # Create background
+                                background = Image.new('RGB', target_size, (255, 255, 255))
+                                ratio = min(target_size[0]/width, target_size[1]/height)
+                                new_size = (int(width*ratio), int(height*ratio))
+                                img = img.resize(new_size, Image.LANCZOS)
+                                
+                                # Center the image on background
+                                position = (
+                                    (target_size[0] - new_size[0]) // 2,
+                                    (target_size[1] - new_size[1]) // 2
+                                )
+                                background.paste(img, position)
+                                img = background
+                            else:
+                                img = img.resize(target_size, Image.LANCZOS)
+                            
+                            # Save with quality settings
+                            img.save(ph_path, "JPEG", quality=90, optimize=True, progressive=True)
+                    except Exception as e:
+                        await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
+                        if ph_path and os.path.exists(ph_path):
+                            os.remove(ph_path)
+                        ph_path = None
             except Exception as e:
                 await upload_msg.edit(f"⚠️ Thumbnail Download Error: {e}")
                 ph_path = None
 
-        # Prepare caption
-        duration = 0
-        try:
-            parser = createParser(path)
-            metadata = extractMetadata(parser)
-            if metadata.has("duration"):
-                duration = metadata.get('duration').seconds
-            parser.close()
-        except:
-            pass
-
         caption = (
             c_caption.format(
                 filename=renamed_file_name,
-                filesize=humanbytes(os.path.getsize(path)),
-                duration=convert(duration),
+                filesize=humanbytes(message.document.file_size),
+                duration=convert(0),
             )
             if c_caption
             else f"**{renamed_file_name}**"
         )
 
-        # Upload file based on media type
+        # Upload file
         try:
-            upload_functions = {
-                "document": client.send_document,
-                "video": client.send_video,
-                "audio": client.send_audio
-            }
-            
-            upload_kwargs = {
-                "chat_id": message.chat.id,
-                "caption": caption,
-                "thumb": ph_path,
-                "progress": progress_for_pyrogram,
-                "progress_args": ("Upload Started...", upload_msg, time.time())
-            }
-            
             if media_type == "document":
-                upload_kwargs["document"] = path
+                await client.send_document(
+                    message.chat.id,
+                    document=path,
+                    thumb=ph_path if ph_path else None,
+                    caption=caption,
+                    progress=progress_for_pyrogram,
+                    progress_args=("Upload Started...", upload_msg, time.time()),
+                )
             elif media_type == "video":
-                upload_kwargs["video"] = path
-                upload_kwargs["duration"] = duration
+                await client.send_video(
+                    message.chat.id,
+                    video=path,
+                    caption=caption,
+                    thumb=ph_path if ph_path else None,
+                    duration=0,
+                    progress=progress_for_pyrogram,
+                    progress_args=("Upload Started...", upload_msg, time.time()),
+                )
             elif media_type == "audio":
-                upload_kwargs["audio"] = path
-                upload_kwargs["duration"] = duration
-            
-            await upload_functions[media_type](**upload_kwargs)
-            
+                await client.send_audio(
+                    message.chat.id,
+                    audio=path,
+                    caption=caption,
+                    thumb=ph_path if ph_path else None,
+                    duration=0,
+                    progress=progress_for_pyrogram,
+                    progress_args=("Upload Started...", upload_msg, time.time()),
+                )
+            elif is_pdf:
+                await client.send_document(
+                    message.chat.id,
+                    document=path,
+                    thumb=ph_path if ph_path else None,
+                    caption=caption,
+                    progress=progress_for_pyrogram,
+                    progress_args=("Upload Started...", upload_msg, time.time()),
+                )
         except Exception as e:
-            error_msg = f"Upload Error: {str(e)}"
-            await upload_msg.edit(error_msg)
-            if os.path.exists(renamed_file_path):
-                os.remove(renamed_file_path)
+            os.remove(renamed_file_path)
             if ph_path and os.path.exists(ph_path):
                 os.remove(ph_path)
-            return
+            return await upload_msg.edit(f"Error: {e}")
 
-        # Cleanup
-        await download_msg.delete()
+        await download_msg.delete() 
         if os.path.exists(path):
             os.remove(path)
         if ph_path and os.path.exists(ph_path):
             os.remove(ph_path)
 
     finally:
-        # Final cleanup
         if os.path.exists(renamed_file_path):
             os.remove(renamed_file_path)
         if os.path.exists(metadata_file_path):
@@ -491,6 +476,4 @@ async def rename_worker():
 async def auto_rename_files(client, message):
     await rename_queue.put((client, message))
 
-# Start the worker when the script runs
-if __name__ == "__main__":
-    asyncio.create_task(rename_worker())
+asyncio.create_task(rename_worker())
