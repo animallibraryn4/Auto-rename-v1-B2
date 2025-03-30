@@ -361,42 +361,36 @@ async def process_rename(client: Client, message: Message):
                         width, height = img.size
                         target_size = 320
                         
-                        # Only zoom if image is smaller than target in both dimensions
-                        if width < target_size and height < target_size:
-                            # Calculate minimum scale needed to reach target size
-                            scale = max(target_size/width, target_size/height)
-                            new_width = int(width * scale)
-                            new_height = int(height * scale)
-                            img = img.resize((new_width, new_height), Image.LANCZOS)
-                            width, height = img.size
-                        
-                        # Calculate crop coordinates
-                        if width > target_size:
-                            # Crop from sides (maintain height)
-                            left = (width - target_size) // 2
-                            top = 0
-                            right = left + target_size
-                            bottom = height
-                        elif height > target_size:
-                            # Crop from top/bottom (maintain width)
-                            left = 0
-                            top = (height - target_size) // 2
-                            right = width
-                            bottom = top + target_size
+                        # Check if already perfect size
+                        if width == target_size and height == target_size:
+                            # No processing needed for perfect thumbnails
+                            img.save(ph_path, "JPEG", quality=95)
                         else:
-                            # Already perfect size
-                            left = 0
-                            top = 0
-                            right = width
-                            bottom = height
-                        
-                        # Perform crop if needed
-                        if width != target_size or height != target_size:
-                            img = img.crop((left, top, right, bottom))
-                        
-                        # Save with high quality
-                        img.save(ph_path, "JPEG", quality=95)
-                        
+                            # Only crop if one dimension matches and other is larger
+                            if (width == target_size and height > target_size) or \
+                               (height == target_size and width > target_size):
+                                
+                                # Calculate crop coordinates
+                                if width > target_size:
+                                    # Crop from sides (maintain height)
+                                    left = (width - target_size) // 2
+                                    top = 0
+                                    right = left + target_size
+                                    bottom = height
+                                elif height > target_size:
+                                    # Crop from top/bottom (maintain width)
+                                    left = 0
+                                    top = (height - target_size) // 2
+                                    right = width
+                                    bottom = top + target_size
+                                
+                                # Perform crop
+                                img = img.crop((left, top, right, bottom))
+                                img.save(ph_path, "JPEG", quality=95)
+                            else:
+                                # For all other cases (including smaller thumbnails), keep original
+                                img.save(ph_path, "JPEG", quality=95)
+                                
                     except Exception as e:
                         await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
                         ph_path = None
