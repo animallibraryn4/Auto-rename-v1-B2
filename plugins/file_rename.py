@@ -329,7 +329,7 @@ async def process_rename(client: Client, message: Message):
         upload_msg = await download_msg.edit("**__Uploading...__**")
         c_caption = await codeflixbots.get_caption(message.chat.id)
 
-        # Handle thumbnails with improved processing
+        # Handle thumbnails
         c_thumb = None
         is_global_enabled = await codeflixbots.is_global_thumb_enabled(user_id)
 
@@ -353,39 +353,34 @@ async def process_rename(client: Client, message: Message):
                 ph_path = await client.download_media(c_thumb)
                 if ph_path and os.path.exists(ph_path):
                     try:
-                        with Image.open(ph_path) as img:
-                            # Convert to RGB if needed
-                            if img.mode != 'RGB':
-                                img = img.convert('RGB')
-                            
-                            # Calculate dimensions while maintaining aspect ratio
-                            width, height = img.size
-                            target_size = (320, 320)
-                            
-                            # Resize with high-quality interpolation
-                            if width != height:
-                                # Create background
-                                background = Image.new('RGB', target_size, (255, 255, 255))
-                                ratio = min(target_size[0]/width, target_size[1]/height)
-                                new_size = (int(width*ratio), int(height*ratio))
-                                img = img.resize(new_size, Image.LANCZOS)
-                                
-                                # Center the image on background
-                                position = (
-                                    (target_size[0] - new_size[0]) // 2,
-                                    (target_size[1] - new_size[1]) // 2
-                                )
-                                background.paste(img, position)
-                                img = background
-                            else:
-                                img = img.resize(target_size, Image.LANCZOS)
-                            
-                            # Save with quality settings
-                            img.save(ph_path, "JPEG", quality=90, optimize=True, progressive=True)
+                        img = Image.open(ph_path)
+                        # Convert to RGB if needed
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        
+                        # Calculate scaling factor
+                        width, height = img.size
+                        target_size = 320
+                        
+                        if width < target_size or height < target_size:
+                            # Thumbnail is too small - zoom/enlarge first
+                            scale_factor = max(target_size/width, target_size/height)
+                            new_width = int(width * scale_factor)
+                            new_height = int(height * scale_factor)
+                            img = img.resize((new_width, new_height), Image.LANCZOS)
+                        
+                        # Now crop to exact 320x320
+                        width, height = img.size
+                        left = (width - target_size)/2
+                        top = (height - target_size)/2
+                        right = (width + target_size)/2
+                        bottom = (height + target_size)/2
+                        
+                        img = img.crop((left, top, right, bottom))
+                        img.save(ph_path, "JPEG", quality=95)
+                        
                     except Exception as e:
                         await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
-                        if ph_path and os.path.exists(ph_path):
-                            os.remove(ph_path)
                         ph_path = None
             except Exception as e:
                 await upload_msg.edit(f"⚠️ Thumbnail Download Error: {e}")
