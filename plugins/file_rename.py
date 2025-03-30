@@ -348,20 +348,6 @@ async def process_rename(client: Client, message: Message):
             c_thumb = message.video.thumbs[0].file_id
 
         ph_path = None
-        if c_thumb:
-            try:
-                ph_path = await client.download_media(c_thumb)
-                if ph_path and os.path.exists(ph_path):
-                    try:
-                        img = Image.open(ph_path).convert("RGB")
-                        img = img.resize((320, 320))
-                        img.save(ph_path, "JPEG")
-                    except Exception as e:
-                        await upload_msg.edit(f"⚠️ Thumbnail Process Error: {e}")
-                        ph_path = None
-            except Exception as e:
-                await upload_msg.edit(f"⚠️ Thumbnail Download Error: {e}")
-                ph_path = None
 
         caption = (
             c_caption.format(
